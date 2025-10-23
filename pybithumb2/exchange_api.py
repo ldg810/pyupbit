@@ -10,28 +10,29 @@ import math
 import jwt          # PyJWT
 import re
 import uuid
+import time
 import hashlib
 from urllib.parse import urlencode
-from pyupbit.request_api import _send_get_request, _send_post_request, _send_delete_request
+from pybithumb2.request_api import _send_get_request, _send_post_request, _send_delete_request
 
 
 def get_tick_size(price, method="floor"):
-    """원화마켓 주문 가격 단위 
+    """원화마켓 주문 가격 단위
 
     Args:
-        price (float]): 주문 가격 
+        price (float]): 주문 가격
         method (str, optional): 주문 가격 계산 방식. Defaults to "floor".
 
     Returns:
-        float: 업비트 원화 마켓 주문 가격 단위로 조정된 가격 
+        float: 업비트 원화 마켓 주문 가격 단위로 조정된 가격
     """
 
     if method == "floor":
         func = math.floor
     elif method == "round":
-        func = round 
+        func = round
     else:
-        func = math.ceil 
+        func = math.ceil
 
     if price >= 2000000:
         tick_size = func(price / 1000) * 1000
@@ -55,7 +56,7 @@ def get_tick_size(price, method="floor"):
     return tick_size
 
 
-class Upbit:
+class Bithumb:
     def __init__(self, access, secret):
         self.access = access
         self.secret = secret
@@ -64,25 +65,30 @@ class Upbit:
     def _request_headers(self, query=None):
         payload = {
             "access_key": self.access,
-            "nonce": str(uuid.uuid4())
+            "nonce": str(uuid.uuid4()),
+            'timestamp': round(time.time() * 1000)
         }
-
         if query is not None:
-            m = hashlib.sha512()
-            m.update(urlencode(query, doseq=True).replace("%5B%5D=", "[]=").encode())
-            query_hash = m.hexdigest()
+            hash = hashlib.sha512()
+            hash.update(urlencode(query).encode())
+            query_hash = hash.hexdigest()
+#            m.update(urlencode(query, doseq=True).replace("%5B%5D=", "[]=").encode())
+#            query_hash = m.hexdigest()
             payload['query_hash'] = query_hash
             payload['query_hash_alg'] = "SHA512"
 
-        #jwt_token = jwt.encode(payload, self.secret, algorithm="HS256").decode('utf-8')
-        jwt_token = jwt.encode(payload, self.secret, algorithm="HS256")     # PyJWT >= 2.0
+#        jwt_token = jwt.encode(payload, self.secret, algorithm="HS256")     # PyJWT >= 2.0
+        jwt_token = jwt.encode(payload, self.secret)
         authorization_token = 'Bearer {}'.format(jwt_token)
-        headers = {"Authorization": authorization_token}
+        headers = {
+                "Authorization": authorization_token,
+                "Content-Type": "application/json"
+                }
         return headers
 
 
     #--------------------------------------------------------------------------
-    # 자산 
+    # 자산
     #--------------------------------------------------------------------------
     #     전체 계좌 조회
     def get_balances(self, contain_req=False):
@@ -92,7 +98,7 @@ class Upbit:
         :return: 내가 보유한 자산 리스트
         [contain_req == True 일 경우 Remaining-Req가 포함]
         """
-        url = "https://api.upbit.com/v1/accounts"
+        url = "https://api.bithumb.com/v1/accounts"
         headers = self._request_headers()
         result = _send_get_request(url, headers=headers)
         if contain_req:
@@ -233,7 +239,7 @@ class Upbit:
 
 
     #--------------------------------------------------------------------------
-    # 주문 
+    # 주문
     #--------------------------------------------------------------------------
     #     주문 가능 정보
     def get_chance(self, ticker, contain_req=False):
@@ -245,7 +251,7 @@ class Upbit:
         [contain_req == True 일 경우 Remaining-Req가 포함]
         """
         try:
-            url = "https://api.upbit.com/v1/orders/chance"
+            url = "https://api.bithumb.com/v1/orders/chance"
             data = {"market": ticker}
             headers = self._request_headers(data)
             result = _send_get_request(url, headers=headers, data=data)
@@ -256,10 +262,10 @@ class Upbit:
         except Exception as x:
             print(x.__class__.__name__)
             return None
-    
 
-    #    개별 주문 조회 
-    def get_order(self, ticker_or_uuid, state='wait', kind='normal', contain_req=False):
+
+    #    개별 주문 조회
+    def get_order(self, ticker_or_uuid, state='wait', kind='normal', page=1, contain_req=False):
         """
         주문 리스트 조회
         :param ticker: market
@@ -275,17 +281,18 @@ class Upbit:
             # - r"^[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$"
             is_uuid = len(p.findall(ticker_or_uuid)) > 0
             if is_uuid:
-                url = "https://api.upbit.com/v1/order"
+                url = "https://api.bithumb.com/v1/order"
                 data = {'uuid': ticker_or_uuid}
                 headers = self._request_headers(data)
                 result = _send_get_request(url, headers=headers, data=data)
             else :
 
-                url = "https://api.upbit.com/v1/orders"
+                url = "https://api.bithumb.com/v1/orders"
                 data = {'market': ticker_or_uuid,
                         'state': state,
                         'kind': kind,
-                        'order_by': 'desc'
+                        'order_by': 'desc',
+                        'page': page
                         }
                 headers = self._request_headers(data)
                 result = _send_get_request(url, headers=headers, data=data)
@@ -308,7 +315,7 @@ class Upbit:
         """
         # TODO : states, uuids, identifiers 관련 기능 추가 필요
         try:
-            url = "https://api.upbit.com/v1/order"
+            url = "https://api.bithumb.com/v1/order"
             data = {'uuid': uuid}
             headers = self._request_headers(data)
             result = _send_get_request(url, headers=headers, data=data)
@@ -321,7 +328,7 @@ class Upbit:
             return None
 
     #    주문 취소 접수
-    def cancel_order(self, uuid, contain_req=False):
+    def cancel_order(self, order_id, contain_req=False):
         """
         주문 취소
         :param uuid: 주문 함수의 리턴 값중 uuid
@@ -329,10 +336,14 @@ class Upbit:
         :return:
         """
         try:
-            url = "https://api.upbit.com/v1/order"
-            data = {"uuid": uuid}
+            url = "https://api.bithumb.com/v2/order"
+            
+            data = {"order_id": order_id}
             headers = self._request_headers(data)
             result = _send_delete_request(url, headers=headers, data=data)
+            print(f'-----------> {result}')
+            if 'error' in result:
+                return result
             if contain_req:
                 return result
             else:
@@ -342,7 +353,7 @@ class Upbit:
             return None
 
 
-    #     주문 
+    #     주문
     def buy_limit_order(self, ticker, price, volume, contain_req=False):
         """
         지정가 매수
@@ -353,19 +364,24 @@ class Upbit:
         :return:
         """
         try:
-            url = "https://api.upbit.com/v1/orders"
-            data = {"market": ticker,
-                    "side": "bid",
-                    "volume": str(volume),
-                    "price": str(price),
-                    "ord_type": "limit"}
+            url = "https://api.bithumb.com/v2/orders"
+            data = {"market":ticker,
+                    "side":"bid",
+                    "volume":str(volume),
+                    "price":str(price),
+                    "order_type":"limit"}
             headers = self._request_headers(data)
             result = _send_post_request(url, headers=headers, data=data)
+            if 'error' in result:
+                return result
             if contain_req:
                 return result
             else:
                 return result[0]
         except Exception as x:
+            #print("Exception in buy_limit_order!")
+            #print(x)
+            #print(x.__class__)
             print(x.__class__.__name__)
             return None
 
@@ -378,11 +394,11 @@ class Upbit:
         :return:
         """
         try:
-            url = "https://api.upbit.com/v1/orders"
+            url = "https://api.bithumb.com/v2/orders"
             data = {"market": ticker,  # market ID
                     "side": "bid",  # buy
                     "price": str(price),
-                    "ord_type": "price"}
+                    "order_type": "price"}
             headers = self._request_headers(data)
             result = _send_post_request(url, headers=headers, data=data)
             if contain_req:
@@ -402,13 +418,15 @@ class Upbit:
         :return:
         """
         try:
-            url = "https://api.upbit.com/v1/orders"
+            url = "https://api.bithumb.com/v2/orders"
             data = {"market": ticker,  # ticker
                     "side": "ask",  # sell
                     "volume": str(volume),
-                    "ord_type": "market"}
+                    "order_type": "market"}
             headers = self._request_headers(data)
             result = _send_post_request(url, headers=headers, data=data)
+            if 'error' in result:
+                return result
             if contain_req:
                 return result
             else:
@@ -427,14 +445,16 @@ class Upbit:
         :return:
         """
         try:
-            url = "https://api.upbit.com/v1/orders"
+            url = "https://api.bithumb.com/v2/orders"
             data = {"market": ticker,
                     "side": "ask",
                     "volume": str(volume),
                     "price": str(price),
-                    "ord_type": "limit"}
+                    "order_type": "limit"}
             headers = self._request_headers(data)
             result = _send_post_request(url, headers=headers, data=data)
+            if 'error' in result:
+                return result
             if contain_req:
                 return result
             else:
@@ -458,7 +478,7 @@ class Upbit:
         :return:
         """
         try:
-            url = "https://api.upbit.com/v1/withdraw"
+            url = "https://api.bithumb.com/v1/withdraw"
             data = {"uuid": uuid, "currency": currency}
             headers = self._request_headers(data)
             result = _send_get_request(url, headers=headers, data=data)
@@ -471,8 +491,8 @@ class Upbit:
             return None
 
 
-    #     코인 출금하기  
-    def withdraw_coin(self, currency, amount, address, secondary_address='None', transaction_type='default', contain_req=False):
+    #     코인 출금하기
+    def withdraw_coin(self, currency, net_type, amount, address, secondary_address=None, contain_req=False):
         """
         코인 출금
         :param currency: Currency symbol
@@ -484,14 +504,24 @@ class Upbit:
         :return:
         """
         try:
-            url = "https://api.upbit.com/v1/withdraws/coin"
-            data = {"currency": currency,
-                    "amount": amount,
-                    "address": address,
-                    "secondary_address": secondary_address,
-                    "transaction_type": transaction_type}
+            url = "https://api.bithumb.com/v1/withdraws/coin"
+
+            if secondary_address == None or secondary_address == 'None':
+                data = {"currency": currency,
+                        "net_type": net_type,
+                        "amount": amount,
+                        "address": address}
+            else:
+                data = {"currency": currency,
+                        "net_type": net_type,
+                        "amount": amount,
+                        "address": address,
+                        "secondary_address": secondary_address,}
+
+            print(data)
             headers = self._request_headers(data)
             result = _send_post_request(url, headers=headers, data=data)
+            print(result)
             if contain_req:
                 return result
             else:
@@ -510,7 +540,7 @@ class Upbit:
         :return:
         """
         try:
-            url = "https://api.upbit.com/v1/withdraws/krw"
+            url = "https://api.bithumb.com/v1/withdraws/krw"
             data = {"amount": amount}
             headers = self._request_headers(data)
             result = _send_post_request(url, headers=headers, data=data)
@@ -524,22 +554,22 @@ class Upbit:
 
 
     #--------------------------------------------------------------------------
-    # 입금 
+    # 입금
     #--------------------------------------------------------------------------
-    #     입금 리스트 조회 
+    #     입금 리스트 조회
     #     개별 입금 조회
-    #     입금 주소 생성 요청 
+    #     입금 주소 생성 요청
     #     전체 입금 주소 조회
     #     개별 입금 주소 조회
     #     원화 입금하기
 
 
     #--------------------------------------------------------------------------
-    # 서비스 정보 
+    # 서비스 정보
     #--------------------------------------------------------------------------
-    #     입출금 현황 
+    #     입출금 현황
     def get_deposit_withdraw_status(self, contain_req=False):
-        url = "https://api.upbit.com/v1/status/wallet"
+        url = "https://api.bithumb.com/v1/status/wallet"
         headers = self._request_headers()
         result = _send_get_request(url, headers=headers)
         if contain_req:
@@ -550,7 +580,7 @@ class Upbit:
 
     #     API키 리스트 조회
     def get_api_key_list(self, contain_req=False):
-        url = "https://api.upbit.com/v1/api_keys"
+        url = "https://api.bithumb.com/v1/api_keys"
         headers = self._request_headers()
         result = _send_get_request(url, headers=headers)
         if contain_req:
@@ -565,18 +595,18 @@ if __name__ == "__main__":
     #-------------------------------------------------------------------------
     # api key
     #-------------------------------------------------------------------------
-    with open("upbit.txt") as f:
+    with open("bithumb.txt") as f:
     #with open("조회전용키.txt") as f:
         lines = f.readlines()
         access = lines[0].strip()
         secret = lines[1].strip()
 
-    upbit = Upbit(access, secret)
+    bithumb = Bithumb(access, secret)
 
 
     #-------------------------------------------------------------------------
-    # 자산 
-    #     전체 계좌 조회 
+    # 자산
+    #     전체 계좌 조회
     #balance = upbit.get_balances()
     #pprint.pprint(balance)
 
@@ -593,7 +623,7 @@ if __name__ == "__main__":
 
     #-------------------------------------------------------------------------
     # 주문
-    #     주문 가능 정보 
+    #     주문 가능 정보
     #pprint.pprint(upbit.get_chance('KRW-BTC'))
 
     #     개별 주문 조회
@@ -622,5 +652,5 @@ if __name__ == "__main__":
     #pprint.pprint(resp)
 
     #     API키 리스트 조회
-    resp = upbit.get_api_key_list()
+    resp = bithumb.get_api_key_list()
     print(resp)

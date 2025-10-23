@@ -7,18 +7,12 @@ install_requires = [
    'websockets'
 ]
 
-with open("README.md", "r", encoding='UTF-8') as fh:
-    long_description = fh.read()
-
 setuptools.setup(
-    name='pyupbit',
-    version='0.2.19',
-    author='Jonghun Yoo, Brayden Jo',
-    author_email='brayden.jo@outlook.com, jonghun.yoo@outlook.com, pyquant@outlook.com',
-    description='python wrapper for Upbit API',
-    long_description=long_description,
-    long_description_content_type="text/markdown",
-    url='https://github.com/sharebook-kr/pyupbit',
+    name='pybithumb2',
+    version='0.1',
+    author='Dongoo Lee',
+    author_email='ldg810@gmail.com',
+    description='python wrapper for Bithumb API v2.0',
     packages=setuptools.find_packages(),
     install_requires=install_requires,
     classifiers=[

@@ -1,5 +1,5 @@
-# pyupbit
-Python Wrapper for Upbit API
+# pybithumb2
+Python Wrapper for Bithumb API v2.0
 
 ## Documentation
 
